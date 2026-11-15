@@ -3,11 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'bloc/cart_page_bloc.dart';
 import 'cubit/cart_page_cubit.dart';
+import 'observers.dart';
 import 'riverpod/cart_page_riverpod.dart';
 import 'setstate/cart_page_setstate.dart';
 
 void main() {
-  runApp(const ProviderScope(child: CartApp()));
+  runApp(
+    const ProviderScope(
+      observers: [LoggingProviderObserver()],
+      child: CartApp(),
+    ),
+  );
 }
 
 class CartApp extends StatelessWidget {

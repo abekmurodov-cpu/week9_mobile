@@ -53,3 +53,66 @@ everything else in memory).
 (`find.widgetWithText(ActionChip, 'Keyboard · 49')`, keys, tooltips, pumping) rather
 than about cart logic; the logic cannot be tested without building UI because it lives
 inside the `State`.
+
+## Part 3 — Riverpod
+
+**T2 — does `state = state.copyWith(coupon: code)` notify if the code is unchanged?**
+Before `CartState` had value equality: **yes**. `copyWith` always builds a new
+object and the default `==` is identity, so Riverpod saw "different" and notified
+(`ref.listen` + `debugPrint` printed on every Apply). After making `CartState`
+(and `CartLine`, `Product`) extend `Equatable`, applying the same coupon twice
+prints only once: Riverpod 3 compares with `==` and skips the second notification.
+
+**T3 — selective rebuild.** `RiverpodSummaryCard` watches
+`cartProvider.select((s) => (s.itemCount, s.subtotal, s.discount, s.total))`
+(a record, so it compares by value). Log from a run:
+```
+--- add keyboard
+[Riverpod] cart notified: 1 items, coupon null, status idle
+[Riverpod] CartSummaryCard build (total 49.0)
+--- type in coupon field              (no rebuild at all)
+--- apply bad coupon
+[Riverpod] cart notified: 1 items, coupon null, status idle   (no card rebuild)
+--- apply bad coupon again            (equal state: not even notified)
+--- increase
+[Riverpod] cart notified: 2 items, coupon null, status idle
+[Riverpod] CartSummaryCard build (total 98.0)
+```
+
+**T4 — why no `mounted` check is needed.** `cartProvider` is not `autoDispose`;
+the notifier lives in the root `ProviderContainer`, not in the page, so popping the
+page mid-checkout does not dispose it and `state = …` after the `await` is safe (the
+result is simply there when you come back). The SnackBar/banner is triggered by
+`ref.listen`, which Riverpod removes automatically when the widget unmounts. (With
+`autoDispose` you *would* need `if (!ref.mounted) return;` after the await.)
+
+**T5 — `canUndoProvider`.** It must `ref.watch(cartProvider)`: `canUndo` is a plain
+getter on the notifier, not state, so without a dependency on the cart the provider
+would compute once and never update. **Making `cartProvider` autoDispose:** popping
+the page removes the last listener, the provider is disposed, and on return
+`build()` runs again — the cart *and* `_history` are gone, because `_history` lives
+on the notifier instance which is thrown away with the provider. (The final code keeps
+`cartProvider` non-autoDispose so the cart survives navigation.)
+
+**Name the places `ref.read` and `ref.watch` are used, and justify each.**
+- `ref.read(cartProvider.notifier)` in `_CartView.build` — obtaining method handles
+  (`add`, `changeQty`…); the notifier object never changes, so no subscription.
+- `ref.read(cartProvider.notifier).undo()` in the Undo `onPressed` — inside a callback,
+  a one-off action; watching there would be a bug.
+- `ref.read(checkoutApiProvider)` inside `CartNotifier.checkout()` — one-off
+  dependency lookup inside a method, not a reactive build.
+- (also `ref.read(cartProvider)` inside the `ref.listen` callback to fetch
+  `orderId`/`checkoutError` once.)
+- `ref.watch(cartProvider)` in `_CartView.build` — the list, coupon and spinner must
+  update whenever the cart changes.
+- `ref.watch(cartProvider.select(...))` in `RiverpodSummaryCard` — display data,
+  but only the totals projection.
+- (also `ref.watch(canUndoProvider)` in `_UndoButton` and `ref.watch(cartProvider)`
+  inside `canUndoProvider` — reactive dependencies.)
+
+**Why does the summary card rebuild less often than in the setState version?**
+In setState every `setState` re-runs the whole page `build`, which creates a new
+`CartSummaryCard` with new arguments, so it rebuilds on *any* change (coupon error,
+checkout status…). In Riverpod the card is a `const` widget with its own
+subscription to a `select`ed projection: it rebuilds only when that projection is
+`!=` the previous one.

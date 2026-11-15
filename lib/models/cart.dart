@@ -1,8 +1,13 @@
-class Product {
+import 'package:equatable/equatable.dart';
+
+class Product extends Equatable {
   const Product({required this.id, required this.name, required this.price});
   final String id;
   final String name;
   final double price;
+
+  @override
+  List<Object?> get props => [id, name, price];
 }
 
 const catalog = [
@@ -11,10 +16,13 @@ const catalog = [
   Product(id: 'p3', name: 'Monitor', price: 199),
 ];
 
-class CartLine {
+class CartLine extends Equatable {
   const CartLine({required this.product, required this.qty});
   final Product product;
   final int qty;
+
+  @override
+  List<Object?> get props => [product, qty];
 
   double get subtotal => product.price * qty;
 
@@ -56,7 +64,9 @@ const coupons = {'SAVE10': 0.10};
 
 enum CheckoutStatus { idle, submitting, success, failure }
 
-class CartState {
+/// Value equality (via Equatable) matters: Riverpod, Cubit and Bloc all skip
+/// notifying when `newState == oldState`.
+class CartState extends Equatable {
   const CartState({
     this.lines = const [],
     this.coupon,
@@ -72,6 +82,16 @@ class CartState {
   final CheckoutStatus status;
   final String? orderId;
   final String? checkoutError;
+
+  @override
+  List<Object?> get props => [
+    lines,
+    coupon,
+    couponError,
+    status,
+    orderId,
+    checkoutError,
+  ];
 
   // Derived values: always computed, never stored, so they cannot go stale.
   int get itemCount => lines.itemCount;
