@@ -116,3 +116,54 @@ In setState every `setState` re-runs the whole page `build`, which creates a new
 checkout status…). In Riverpod the card is a `const` widget with its own
 subscription to a `select`ed projection: it rebuilds only when that projection is
 `!=` the previous one.
+
+## Part 4 — Cubit
+
+**T2 — dropped emit.** `CartState` extends `Equatable`. With `AppBlocObserver`
+registered in `main`, applying `SAVE10` twice logs only one `onChange`:
+```
+--- apply SAVE10
+[onChange] CartCubit: 1 items, total 49.00, coupon null, ... undo 1 -> 1 items, total 44.10, coupon SAVE10, ... undo 2
+[Cubit] CartSummaryCard build (total 44.1)
+--- apply SAVE10 again                 (emit(equal state) dropped: no onChange, no rebuild)
+```
+`CartState.recordTo(next)` returns `next` unchanged (no new history entry) when
+`next == state`, so the state handed to `emit` really is equal and the Cubit drops it.
+
+**T3.** `BlocSummaryCard<B>` uses `BlocSelector<B, CartState, (int, double, double, double)>`;
+typing in the coupon field never touches the cubit, and status-only changes
+(submitting/failure) do not change the selected record, so the card does not rebuild.
+
+**T4 — emit after `close()`.** If the page is popped mid-checkout, `BlocProvider`
+closes the cubit; when the `await` completes, `emit` on a closed cubit throws
+`StateError: Cannot emit new states after calling close`. Guarded with
+`if (isClosed) return;`.
+
+**T5 — `canUndo` as a getter.** `bool get canUndo => _history.isNotEmpty` on the
+cubit is not part of the state stream, so `BlocBuilder` never rebuilds the Undo button
+when it changes (it only rebuilds on emitted states, and e.g. the first undo-able
+change is emitted *before* anything reads the getter again). Fixed by moving history
+into `CartState.history` (with `canUndo` a derived getter) — now every history change
+is an emitted state and `BlocSelector<…, bool>(selector: (s) => s.canUndo)` rebuilds
+the button exactly when needed.
+
+**T6.** The cubit test asserts the *sequence* of emitted states (three for
+add/add/coupon; `submitting` then `failure` for the declined checkout), whereas the
+Riverpod test only checked the end state.
+
+**What would break if you put `BlocProvider` inside `CartBody`?**
+1. `CartBody` would no longer be dumb/reusable (it would depend on flutter_bloc and
+   on `CartCubit`). 2. The AppBar Undo button and the `BlocListener` sit *above*
+   `CartBody`, so `context.read<CartCubit>()` there would throw
+   `ProviderNotFoundException` — a provider is only visible to its descendants.
+   3. Any rebuild that recreated `CartBody` in a different position would create a
+   brand-new cubit and lose the cart.
+
+**Riverpod equivalents.**
+| flutter_bloc | Riverpod |
+|---|---|
+| `BlocProvider` | a global `NotifierProvider` + `ProviderScope` (scoping: `ProviderScope(overrides: …)`) |
+| `BlocBuilder` | `ref.watch(provider)` in a `ConsumerWidget` / `Consumer` |
+| `BlocListener` | `ref.listen(provider, (prev, next) {...})` |
+| `context.read<CartCubit>()` | `ref.read(cartProvider.notifier)` |
+| `buildWhen` / `BlocSelector` | `ref.watch(cartProvider.select(...))` |

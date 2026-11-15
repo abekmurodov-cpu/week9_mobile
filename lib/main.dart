@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'bloc/cart_page_bloc.dart';
@@ -8,6 +9,7 @@ import 'riverpod/cart_page_riverpod.dart';
 import 'setstate/cart_page_setstate.dart';
 
 void main() {
+  Bloc.observer = const AppBlocObserver();
   runApp(
     const ProviderScope(
       observers: [LoggingProviderObserver()],

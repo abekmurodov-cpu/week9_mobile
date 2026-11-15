@@ -74,6 +74,7 @@ class CartState extends Equatable {
     this.status = CheckoutStatus.idle,
     this.orderId,
     this.checkoutError,
+    this.history = const [],
   });
 
   final List<CartLine> lines;
@@ -83,6 +84,11 @@ class CartState extends Equatable {
   final String? orderId;
   final String? checkoutError;
 
+  /// Undo snapshots, for state holders that keep history *in* the state
+  /// (Cubit, Bloc) so that `canUndo` is observable. setState and Riverpod
+  /// keep their history next to the state instead and leave this empty.
+  final List<CartState> history;
+
   @override
   List<Object?> get props => [
     lines,
@@ -91,6 +97,7 @@ class CartState extends Equatable {
     status,
     orderId,
     checkoutError,
+    history,
   ];
 
   // Derived values: always computed, never stored, so they cannot go stale.
@@ -99,6 +106,7 @@ class CartState extends Equatable {
   double get discount => subtotal * (coupons[coupon] ?? 0);
   double get total => subtotal - discount;
   bool get isSubmitting => status == CheckoutStatus.submitting;
+  bool get canUndo => history.isNotEmpty;
 
   /// Nullable fields take a function so that `null` can be set explicitly.
   CartState copyWith({
@@ -108,6 +116,7 @@ class CartState extends Equatable {
     CheckoutStatus? status,
     String? Function()? orderId,
     String? Function()? checkoutError,
+    List<CartState>? history,
   }) => CartState(
     lines: lines ?? this.lines,
     coupon: coupon != null ? coupon() : this.coupon,
@@ -115,6 +124,7 @@ class CartState extends Equatable {
     status: status ?? this.status,
     orderId: orderId != null ? orderId() : this.orderId,
     checkoutError: checkoutError != null ? checkoutError() : this.checkoutError,
+    history: history ?? this.history,
   );
 
   CartState applyCoupon(String code) {
@@ -133,7 +143,7 @@ class CartState extends Equatable {
     checkoutError: () => null,
   );
 
-  /// A successful order empties the cart.
+  /// A successful order empties the cart (and its undo history).
   CartState checkoutSucceeded(String orderId) =>
       CartState(status: CheckoutStatus.success, orderId: orderId);
 
@@ -143,4 +153,13 @@ class CartState extends Equatable {
   /// What undo restores: the cart contents, without any checkout status.
   CartState get snapshot =>
       CartState(lines: lines, coupon: coupon, couponError: couponError);
+
+  /// Moves to [next], recording this state for undo — unless nothing changed,
+  /// in which case [next] is returned as is and the holder's `==` check drops it.
+  CartState recordTo(CartState next) =>
+      next == this ? next : next.copyWith(history: [...history, snapshot]);
+
+  CartState undo() => history.isEmpty
+      ? this
+      : history.last.copyWith(history: history.sublist(0, history.length - 1));
 }

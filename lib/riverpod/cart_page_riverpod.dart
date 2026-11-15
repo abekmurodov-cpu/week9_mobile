@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/cart.dart';
 import '../widgets/cart_body.dart';
 import '../widgets/cart_summary_card.dart';
 import '../widgets/checkout_feedback.dart';
@@ -48,20 +47,10 @@ class _CartView extends ConsumerWidget {
         'coupon ${next.coupon}, status ${next.status.name}',
       );
     });
-    ref.listen(cartProvider.select((s) => s.status), (prev, next) {
-      final messenger = ScaffoldMessenger.of(context);
-      final cart = ref.read(cartProvider);
-      switch (next) {
-        case CheckoutStatus.success:
-          showCheckoutSuccess(messenger, cart.orderId!);
-        case CheckoutStatus.failure:
-          showCheckoutFailure(messenger, cart.checkoutError!);
-        case CheckoutStatus.submitting:
-          messenger.hideCurrentMaterialBanner();
-        case CheckoutStatus.idle:
-          break;
-      }
-    });
+    ref.listen(
+      cartProvider.select((s) => s.status),
+      (prev, next) => showCheckoutFeedback(context, ref.read(cartProvider)),
+    );
 
     final state = ref.watch(cartProvider); // subscribe: rebuild on change
     final cart = ref.read(cartProvider.notifier); // method handles only
