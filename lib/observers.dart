@@ -40,4 +40,17 @@ class AppBlocObserver extends BlocObserver {
       ' -> ${describe(change.nextState)}',
     );
   }
+
+  /// Only Blocs have transitions: current state -> event -> next state.
+  @override
+  void onTransition(
+    Bloc<dynamic, dynamic> bloc,
+    Transition<dynamic, dynamic> transition,
+  ) {
+    super.onTransition(bloc, transition);
+    debugPrint(
+      '[onTransition] ${bloc.runtimeType}: ${describe(transition.currentState)}'
+      ' --${transition.event}--> ${describe(transition.nextState)}',
+    );
+  }
 }

@@ -35,9 +35,7 @@ void showCheckoutFeedback(BuildContext context, CartState state) {
       showCheckoutSuccess(messenger, state.orderId!);
     case CheckoutStatus.failure:
       showCheckoutFailure(messenger, state.checkoutError!);
-    case CheckoutStatus.submitting:
+    case CheckoutStatus.submitting || CheckoutStatus.idle: // retry or undo
       messenger.hideCurrentMaterialBanner();
-    case CheckoutStatus.idle:
-      break;
   }
 }
