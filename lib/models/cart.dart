@@ -38,6 +38,89 @@ extension CartLines on List<CartLine> {
       if (l.product.id != productId) l,
   ];
 
+  /// Adds [delta] to the line's quantity; a line that drops to 0 is removed.
+  List<CartLine> changeQty(String productId, int delta) => [
+    for (final l in this)
+      if (l.product.id != productId)
+        l
+      else if (l.qty + delta > 0)
+        l.copyWith(qty: l.qty + delta),
+  ];
+
   double get subtotal => fold(0, (s, l) => s + l.subtotal);
   int get itemCount => fold(0, (s, l) => s + l.qty);
+}
+
+/// Coupon code → discount rate.
+const coupons = {'SAVE10': 0.10};
+
+enum CheckoutStatus { idle, submitting, success, failure }
+
+class CartState {
+  const CartState({
+    this.lines = const [],
+    this.coupon,
+    this.couponError,
+    this.status = CheckoutStatus.idle,
+    this.orderId,
+    this.checkoutError,
+  });
+
+  final List<CartLine> lines;
+  final String? coupon;
+  final String? couponError;
+  final CheckoutStatus status;
+  final String? orderId;
+  final String? checkoutError;
+
+  // Derived values: always computed, never stored, so they cannot go stale.
+  int get itemCount => lines.itemCount;
+  double get subtotal => lines.subtotal;
+  double get discount => subtotal * (coupons[coupon] ?? 0);
+  double get total => subtotal - discount;
+  bool get isSubmitting => status == CheckoutStatus.submitting;
+
+  /// Nullable fields take a function so that `null` can be set explicitly.
+  CartState copyWith({
+    List<CartLine>? lines,
+    String? Function()? coupon,
+    String? Function()? couponError,
+    CheckoutStatus? status,
+    String? Function()? orderId,
+    String? Function()? checkoutError,
+  }) => CartState(
+    lines: lines ?? this.lines,
+    coupon: coupon != null ? coupon() : this.coupon,
+    couponError: couponError != null ? couponError() : this.couponError,
+    status: status ?? this.status,
+    orderId: orderId != null ? orderId() : this.orderId,
+    checkoutError: checkoutError != null ? checkoutError() : this.checkoutError,
+  );
+
+  CartState applyCoupon(String code) {
+    final normalized = code.trim().toUpperCase();
+    return coupons.containsKey(normalized)
+        ? copyWith(coupon: () => normalized, couponError: () => null)
+        : copyWith(
+            coupon: () => null,
+            couponError: () => 'Unknown coupon "${code.trim()}"',
+          );
+  }
+
+  CartState startCheckout() => copyWith(
+    status: CheckoutStatus.submitting,
+    orderId: () => null,
+    checkoutError: () => null,
+  );
+
+  /// A successful order empties the cart.
+  CartState checkoutSucceeded(String orderId) =>
+      CartState(status: CheckoutStatus.success, orderId: orderId);
+
+  CartState checkoutFailed(String message) =>
+      copyWith(status: CheckoutStatus.failure, checkoutError: () => message);
+
+  /// What undo restores: the cart contents, without any checkout status.
+  CartState get snapshot =>
+      CartState(lines: lines, coupon: coupon, couponError: couponError);
 }
